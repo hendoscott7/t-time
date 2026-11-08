@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-Time</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
+<style>
+  :root { color-scheme:light dark; --bg:#fff; --fg:#111; --on:#fff; --mute:#9a9a9a; --panel:#f3f2f0; --line:#e4e2dc;
+          --glass:rgba(255,255,255,.82); --scrim:rgba(17,17,17,.18); --shadow:rgba(0,0,0,.10); --ring:rgba(0,0,0,.05); --hair:rgba(0,0,0,.08); }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0f0f0e; --fg:#f2f1ee; --on:#111; --mute:#7d7c78; --panel:#1c1c1a; --line:#2c2c29;
+            --glass:rgba(28,28,26,.78); --scrim:rgba(0,0,0,.45); --shadow:rgba(0,0,0,.45); --ring:rgba(255,255,255,.06); --hair:rgba(255,255,255,.12); }
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { font:400 15px/1.35 Inter, "Helvetica Neue", Arial, sans-serif; color:var(--fg); background:var(--bg);
+         min-height:100vh; display:flex; flex-direction:column; padding:20px 24px 124px; gap:16px; }
+  .caps { text-transform:uppercase; letter-spacing:.06em; }
+  button { font:inherit; color:inherit; background:none; border:0; padding:0; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  svg { display:block; }
+
+  header { display:flex; justify-content:space-between; align-items:center; }
+  .actions { display:flex; gap:8px; }
+  .mark { font-weight:600; font-size:20px; letter-spacing:-.01em; }
+  .actions { display:flex; gap:8px; }
+  .iconbtn { width:44px; height:44px; border-radius:14px; background:var(--panel); display:grid; place-items:center; position:relative; }
+  .iconbtn:active { transform:scale(.94); }
+  .badge { position:absolute; top:-4px; right:-4px; min-width:18px; height:18px; padding:0 5px; border-radius:9px;
+           background:var(--fg); color:var(--on); font-size:11px; font-weight:600; display:grid; place-items:center; }
+  .badge[hidden] { display:none; }
+
+  .panel { background:var(--panel); flex:1; min-height:46vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+           padding:32px 24px; text-align:center; overflow:hidden; border-radius:16px; }
+  #pick { font-size:clamp(36px, 7vw, 76px); font-weight:500; letter-spacing:-.025em; line-height:1.05; max-width:13ch; }
+  #pick.empty { color:var(--mute); }
+  #pick.has { cursor:pointer; }
+  #marks { display:flex; gap:10px; align-items:center; justify-content:center; height:22px; margin-bottom:12px; }
+  #marks .dot { width:8px; height:8px; border-radius:50%; background:var(--fg); }
+  #marks .tick { width:22px; height:22px; border-radius:50%; background:var(--fg); color:var(--on); display:grid; place-items:center; }
+  .dock button.on { background:var(--fg); color:var(--on); }
+  .dock { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+  #pick.shuffle { opacity:.25; filter:blur(1.5px); }
+  #pick.land { animation:land .35s cubic-bezier(.2,.8,.2,1); }
+  @keyframes land { from { opacity:0; transform:translateY(10px) scale(.98); } to { opacity:1; transform:none; } }
+
+  .dock { position:fixed; left:50%; bottom:20px; transform:translateX(-50%); z-index:10; display:flex; gap:6px; padding:6px;
+          background:var(--glass); -webkit-backdrop-filter:blur(16px); backdrop-filter:blur(16px); border-radius:20px;
+          box-shadow:0 10px 32px var(--shadow), 0 0 0 1px var(--ring); }
+  .dock button { background:var(--panel); height:58px; width:66px; border-radius:14px; display:grid; place-items:center; transition:opacity .15s, transform .1s; }
+  .dock button:active { transform:scale(.97); }
+  .dock button:disabled { opacity:.35; cursor:default; }
+  .dock #spin { width:150px; background:var(--fg); color:var(--on); font-size:16px; position:relative; overflow:hidden; }
+  #spin span { position:relative; z-index:1; }
+  #spin::after { content:""; position:absolute; inset:0; background:var(--mute); opacity:.45; transform:scaleX(0); transform-origin:left; }
+  #spin.holding::after { transform:scaleX(1); transition:transform .55s linear .12s; }
+  .panel { position:relative; }
+  .panel.reeling #marks, .panel.reeling #pick { opacity:0; transition:opacity .15s; }
+  .reel { position:absolute; inset:0; list-style:none; margin:0; padding:24px; display:flex; flex-direction:column; justify-content:center; gap:4px; }
+  .reel li { display:flex; align-items:baseline; gap:16px; font-size:clamp(17px, 2.6vw, 24px); font-weight:500; letter-spacing:-.01em;
+             opacity:0; animation:rise .3s cubic-bezier(.2,.8,.2,1) both; animation-delay:calc(var(--i) * 35ms); }
+  .reel li span { width:44px; flex:none; color:var(--mute); font-size:13px; font-weight:400; text-align:right; }
+  .reel li b { font-weight:500; opacity:.3; filter:blur(1px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:opacity .15s, filter .15s; }
+  .reel li.set b { opacity:1; filter:none; animation:land .3s cubic-bezier(.2,.8,.2,1); }
+  .reel.away { animation:away .32s cubic-bezier(.5,0,.75,0) forwards; }
+  @keyframes away { to { opacity:0; transform:translateY(-14px) scale(.97); } }
+  .bump { animation:bump .45s cubic-bezier(.3,1.6,.5,1); }
+  @keyframes bump { 40% { transform:scale(1.22); } }
+  .days.stagger > li { animation:rise .35s cubic-bezier(.2,.8,.2,1) both; animation-delay:calc(var(--i) * 45ms + 60ms); }
+  @keyframes rise { from { opacity:0; transform:translateY(10px); } }
+  .days li.swap .n { animation:rise .3s cubic-bezier(.2,.8,.2,1); }
+  .days li.swap .re svg { animation:turn .4s ease; }
+  @keyframes turn { from { transform:rotate(-180deg); } }
+
+  .modal { position:fixed; inset:0; z-index:20; background:var(--scrim); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+           display:flex; align-items:flex-end; justify-content:center; animation:fade .18s ease; }
+  .modal[hidden] { display:none; }
+  .sheet { width:min(560px, 100%); max-height:86vh; overflow:auto; background:var(--bg); border-radius:22px 22px 0 0;
+           padding:10px 24px 24px; box-shadow:0 -10px 40px var(--shadow), 0 0 0 1px var(--ring); animation:up .28s cubic-bezier(.2,.8,.2,1); }
+  .grab { width:40px; height:4px; border-radius:4px; background:var(--line); margin:0 auto 18px; }
+  .sheet h2 { font-size:28px; font-weight:500; letter-spacing:-.02em; line-height:1.1; margin-bottom:20px; }
+  .sheet h3 { font:inherit; color:var(--mute); margin:18px 0 8px; }
+  .chips { list-style:none; padding:0; display:flex; flex-wrap:wrap; gap:6px; }
+  .chips li { background:var(--panel); border-radius:10px; padding:6px 10px; }
+  .sheet ol { padding-left:20px; line-height:1.6; }
+  .sheet ol li { padding-left:4px; margin-bottom:4px; }
+  .nopelist { list-style:none; padding:0; display:flex; flex-wrap:wrap; gap:6px; }
+  .nopelist button { background:var(--panel); border-radius:10px; padding:9px 12px; display:flex; align-items:center; gap:8px; }
+  .nopelist button svg { color:var(--mute); }
+  .nopelist .split { display:flex; background:var(--panel); border-radius:10px; }
+  .nopelist .split button { background:none; }
+  .nopelist .split button:first-child { padding-right:6px; }
+  .nopelist .split .rm { padding:9px 12px 9px 6px; }
+  .sechead { display:flex; align-items:center; gap:10px; color:var(--mute); font-size:15px; margin:6px 0 12px; }
+  .sic { display:grid; place-items:center; color:var(--fg); }
+  .sechead + .nopelist { margin-bottom:18px; }
+  .divider { height:0; border-top:.5px solid var(--hair); margin:0 0 16px; }
+  .done { width:100%; margin-top:22px; padding:16px; border-radius:14px; background:var(--fg); color:var(--on); display:grid; place-items:center; }
+
+  .toast { position:fixed; left:50%; bottom:100px; z-index:30; border-radius:12px; transform:translate(-50%,16px); background:var(--fg); color:var(--on);
+           padding:14px 18px; display:flex; gap:18px; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; white-space:nowrap; }
+  .toast.show { opacity:1; transform:translate(-50%,0); pointer-events:auto; }
+  .toast button { text-decoration:underline; text-underline-offset:3px; }
+  .toast button[hidden] { display:none; }
+
+  .days { list-style:none; padding:0; }
+  .days > li { display:flex; align-items:center; gap:14px; padding:12px 0; border-bottom:1px solid var(--line); }
+  .days .d { width:38px; color:var(--mute); flex:none; }
+  .days .n { flex:1; font-size:17px; text-align:left; display:flex; align-items:center; gap:8px; }
+  .days .n .dot { width:6px; height:6px; border-radius:50%; background:var(--fg); flex:none; }
+  .days .re { color:var(--mute); width:36px; height:36px; border-radius:10px; display:grid; place-items:center; flex:none; }
+  .days .re:active { background:var(--panel); }
+  .days li.blank .n::before { content:""; display:block; width:56px; height:2px; border-radius:2px; background:var(--line); }
+  .days .re.add { background:var(--panel); color:var(--fg); }
+  .days li.open { border-bottom-color:transparent; }
+  .days li.open .n { font-weight:500; }
+  .days > li.detail { display:block; padding:0 0 16px 52px; border-bottom:1px solid var(--line); }
+  .days li.detail > div { animation:rise .25s cubic-bezier(.2,.8,.2,1); }
+  .days li.detail .chips { margin-bottom:12px; }
+  .days li.detail ol { padding-left:18px; line-height:1.55; color:var(--fg); }
+  .days li.detail ol li { padding:0 0 4px 2px; }
+  .days[hidden], .divider[hidden] { display:none; }
+  .wactions { display:flex; gap:8px; margin-top:22px; }
+  .wactions button { height:52px; border-radius:14px; background:var(--panel); display:grid; place-items:center; width:56px; }
+  .wactions button.on { background:var(--fg); color:var(--on); }
+  .wactions [data-close] { flex:1; background:var(--fg); color:var(--on); }
+  .still .modal, .still .sheet, .still .days li, .modal.back, .modal.back .sheet { animation:none !important; }
+  @keyframes up { from { transform:translateY(100%); } }
+  @keyframes fade { from { opacity:0; } }
+  @media (max-width:720px) {
+    body { padding:16px 16px 116px; }
+    .dock { bottom:16px; }
+    .dock #spin { width:130px; }
+  }
+  @media (prefers-reduced-motion: reduce) { #pick.land, .sheet, .modal { animation:none; } }
+</style>
+</head>
+<body>
+  <header>
+    <div class="mark">T-Time</div>
+    <div class="actions">
+      <button class="iconbtn" id="openWeek" aria-label="Week"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5.5" width="16" height="14" rx="3"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></svg></button>
+      <button class="iconbtn" id="openLists" aria-label="Lists"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h9"/></svg><span class="badge" id="badge" hidden></span></button>
+    </div>
+  </header>
+
+  <section class="panel"><div id="marks"></div><div id="pick" class="empty">What's for tea?</div></section>
+
+  <div class="dock caps">
+    <button id="nope" aria-label="Nope" disabled><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <button id="spin"><span>Spin</span></button>
+    <button id="yum" aria-label="Ate it" disabled><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5L19.5 7"/></svg></button>
+  </div>
+
+  <div class="modal" id="recipe" hidden>
+    <div class="sheet"><div class="grab"></div><h2 id="rTitle"></h2><div id="rView"></div>
+      <button class="done caps" id="rDone" data-close>Done</button></div>
+  </div>
+
+  <div class="modal" id="lists" hidden>
+    <div class="sheet"><div class="grab"></div>
+      <div class="sechead"><span class="sic yes"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span id="cntYes"></span></div>
+      <ul class="nopelist" id="yesList"></ul>
+      <div class="divider"></div>
+      <div class="sechead"><span class="sic no"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span><span id="cntNo"></span></div>
+      <ul class="nopelist" id="nopeList"></ul>
+      <button class="done caps" data-close>Done</button></div>
+  </div>
+
+  <div class="modal" id="week" hidden>
+    <div class="sheet"><div class="grab"></div>
+      <ul class="days" id="days"></ul>
+      <div class="wactions">
+        <button id="replan" aria-label="New week"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 13.7-5.6L20 8.5M20 4v4.5h-4.5M20 12a8 8 0 0 1-13.7 5.6L4 15.5M4 20v-4.5h4.5"/></svg></button>
+        <button id="clearWeek" aria-label="Clear week"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.5h15M9.5 6.5V4.5h5v2M6.5 6.5l1 13h9l1-13M10 10.5v6M14 10.5v6"/></svg></button>
+        <button class="caps" data-close>Done</button>
+      </div></div>
+  </div>
+
+  <div class="toast caps" id="toast"><span id="toastMsg"></span><button id="toastUndo">Undo</button></div>
+
+<script type="application/json" id="state">
+__STATE__
+</script>
+
+<script>
+(() => {
+  const TEMPLATE = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+  const LS = "t-time";
+  const $ = id => document.getElementById(id);
+
+  // [name, "v" savoury | "s" sweet]
+  const LIB = __LIB__;
+  // name: "ingredients;… | step;…"
+  const RECIPES = __RECIPES__;
+  const FLAV = Object.fromEntries(LIB.map(([n, t]) => [n.toLowerCase(), t]));
+  const KIND = Object.fromEntries(LIB.map(([n, , k]) => [n.toLowerCase(), k]));
+
+  let state = JSON.parse($("state").textContent);
+  try { const l = JSON.parse(localStorage.getItem(LS)); if (l && l.savedAt > (state.savedAt || 0)) state = l; } catch (e) {}
+  delete state.flav;
+  state.recent = state.recent || [];
+  state.shop = state.shop || {};
+
+  // Keep anything already rated; refresh the rest from the library.
+  state.items = state.items.filter(i => i.s !== "new" || FLAV[i.name.toLowerCase()]);
+  const have = new Set(state.items.map(i => i.name.toLowerCase()));
+  let nextId = Math.max(0, ...state.items.map(i => i.id)) + 1;
+  LIB.forEach(([name]) => { if (!have.has(name.toLowerCase())) state.items.push({ id: nextId++, name, s: "new" }); });
+  const flavOf = i => FLAV[i.name.toLowerCase()] || "v";
+
+  let artifact = null, t = null, toastT = null, undoFn = null, spinning = false;
+  // Syncing reloads the page, so only sync when nothing is in progress.
+  const UI = "t-time-ui";
+  let dirty = false;
+  const busy = () => spinning || [...document.querySelectorAll(".modal")].some(m => !m.hidden) || $("toast").classList.contains("show");
+  function publishNow(force) {
+    t = null;
+    if (!artifact || !dirty) return;
+    if (!force && busy()) { t = setTimeout(publishNow, 5000); return; }
+    dirty = false;
+    try { sessionStorage.setItem(UI, JSON.stringify({ open: [...document.querySelectorAll(".modal")].find(m => !m.hidden)?.id || null, shopping, at: Date.now() })); } catch (e) {}
+    const json = JSON.stringify(state).replace(/</g, "\\u003c");
+    const html = TEMPLATE.replace(/(<script type="application\/json" id="state">)[\s\S]*?(<\/script>)/,
+      (_, a, b) => a + "\n" + json + "\n" + b);
+    artifact.publish(html).catch(() => {});
+  }
+  function save() {
+    state.savedAt = Date.now();
+    try { localStorage.setItem(LS, JSON.stringify(state)); } catch (e) {}
+    dirty = true;
+    clearTimeout(t);
+    t = setTimeout(publishNow, 20000);
+  }
+  document.addEventListener("visibilitychange", () => { if (document.hidden && dirty) { clearTimeout(t); publishNow(true); } });
+  window.addEventListener("pagehide", () => { if (dirty) publishNow(true); });
+
+  function toast(msg, undo) {
+    $("toastMsg").textContent = msg;
+    undoFn = undo || null;
+    $("toastUndo").hidden = !undo;
+    $("toast").classList.add("show");
+    clearTimeout(toastT);
+    toastT = setTimeout(() => $("toast").classList.remove("show"), 3500);
+  }
+
+  const esc = s => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const rnd = a => a[Math.floor(Math.random() * a.length)];
+  const pool = () => state.items.filter(i => i.s !== "vetoed");
+  const current = () => state.items.find(i => i.id === state.last && i.s !== "vetoed");
+  function recipeOf(it) {
+    const raw = RECIPES[it.name]; if (!raw) return null;
+    const [i, m] = raw.split("|");
+    return { i: i.split(";"), m: (m || "").split(";").filter(Boolean) };
+  }
+
+  // Variety: untried foods come up more, liked ones less, and anything seen recently rarely.
+  function weight(i) {
+    let w = i.s === "liked" ? 1 : 3;
+    const r = state.recent.indexOf(i.id);
+    if (r !== -1) w *= 0.05 + 0.95 * (r / state.recent.length);
+    return w;
+  }
+  function weighted(list) {
+    const ws = list.map(weight), total = ws.reduce((a, b) => a + b, 0);
+    let x = Math.random() * total;
+    for (let k = 0; k < list.length; k++) { x -= ws[k]; if (x <= 0) return list[k]; }
+    return list[list.length - 1];
+  }
+  function remember(id) {
+    state.recent = state.recent.filter(x => x !== id);
+    state.recent.push(id);
+    if (state.recent.length > 40) state.recent.shift();
+  }
+
+  function land() { const p = $("pick"); p.classList.remove("land"); void p.offsetWidth; p.classList.add("land"); }
+
+  function spin() {
+    if (spinning) return;
+    const p = pool();
+    if (!p.length) { state.last = null; return render("Nothing left"); }
+    const choice = weighted(p.length > 1 ? p.filter(i => i.id !== state.last) : p);
+    const done = () => { $("pick").classList.remove("shuffle"); state.last = choice.id; remember(choice.id); spinning = false; render(); land(); save(); };
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return done();
+    spinning = true;
+    $("nope").disabled = $("yum").disabled = true;
+    $("pick").classList.remove("empty", "has");
+    $("marks").innerHTML = "";
+    $("pick").classList.add("shuffle");
+    let n = 0;
+    (function tick() { $("pick").textContent = rnd(p).name; if (++n < 6) setTimeout(tick, 55); else setTimeout(done, 55); })();
+  }
+
+  function rate(s) {
+    const cur = current(); if (!cur) return;
+    const prev = cur.s;
+    if (s === "liked" && prev === "liked") s = "new";
+    cur.s = s;
+    toast(s === "vetoed" ? "Nope’d" : s === "liked" ? "Nice one" : "Unticked", () => { cur.s = prev; state.last = cur.id; render(); land(); save(); });
+    if (s === "vetoed") return spin();   // straight on to the next one
+    render(); save();
+  }
+
+  const BIN = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.5h15M9.5 6.5V4.5h5v2M6.5 6.5l1 13h9l1-13M10 10.5v6M14 10.5v6"/></svg>';
+  const X = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  function render(msg) {
+    const cur = current();
+    $("pick").textContent = cur ? cur.name : (msg || "What's for tea?");
+    $("pick").classList.toggle("empty", !cur);
+    $("pick").classList.toggle("has", !!(cur && recipeOf(cur)));
+    $("marks").innerHTML = !cur ? "" :
+      (recipeOf(cur) ? '<span class="dot"></span>' : "") +
+      (cur.s === "liked" ? '<span class="tick"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>' : "");
+    $("yum").classList.toggle("on", !!(cur && cur.s === "liked"));
+    renderWeek();
+    $("nope").disabled = $("yum").disabled = !cur;
+    const out = state.items.filter(i => i.s === "vetoed");
+    const yes = state.items.filter(i => i.s === "liked");
+    $("cntYes").textContent = yes.length || ""; $("cntNo").textContent = out.length || "";
+    $("badge").hidden = !(out.length + yes.length); $("badge").textContent = out.length + yes.length;
+    const EMPTY = "";
+    $("nopeList").innerHTML = out.length ? out.map(i => `<li><button data-id="${i.id}">${esc(i.name)}${X}</button></li>`).join("") : EMPTY;
+    $("yesList").innerHTML = yes.length ? yes.map(i => `<li class="split"><button data-id="${i.id}">${esc(i.name)}</button><button class="rm" data-rm="${i.id}" aria-label="Remove">${BIN}</button></li>`).join("") : EMPTY;
+  }
+
+  // Sheets
+  const open = id => { $(id).hidden = false; };
+  let recipeFromWeek = false;
+  function closeModal(m) {
+    m.hidden = true;
+    if (m.id === "recipe" && recipeFromWeek) { recipeFromWeek = false; renderWeek(); $("days").classList.remove("stagger"); $("week").hidden = false; $("week").classList.add("back"); setTimeout(() => $("week").classList.remove("back"), 300); }
+  }
+  const closeAll = () => document.querySelectorAll(".modal").forEach(m => { if (!m.hidden) closeModal(m); });
+  document.querySelectorAll(".modal").forEach(m => m.addEventListener("click", e => {
+    if (e.target === m || e.target.closest("[data-close]")) closeModal(m);
+  }));
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeAll(); });
+
+  function showRecipe(it) {
+    const rec = it && recipeOf(it); if (!rec) return;
+    $("rTitle").textContent = it.name;
+    $("rView").innerHTML = `<h3 class="caps">Ingredients</h3><ul class="chips">${rec.i.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` +
+      (rec.m.length ? `<h3 class="caps">Method</h3><ol>${rec.m.map(x => `<li>${esc(x)}</li>`).join("")}</ol>` : "");
+    $("rDone").innerHTML = recipeFromWeek ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 6l-6 6 6 6"/></svg>' : "Done";
+    open("recipe");
+  }
+  $("pick").onclick = () => { if (!spinning) showRecipe(current()); };
+  $("openLists").onclick = () => open("lists");
+
+  // ---- Week plan ----
+  const byId = id => state.items.find(i => i.id === id);
+  const dinnerPool = () => state.items.filter(i => i.s !== "vetoed" && KIND[i.name.toLowerCase()] === "d" && RECIPES[i.name]);
+  function pickDinner(exclude) {
+    const p = dinnerPool().filter(i => !exclude.includes(i.id));
+    if (!p.length && !dinnerPool().length) return null;
+    const c = weighted(p.length ? p : dinnerPool()); remember(c.id); return c.id;
+  }
+  const blankWeek = () => { state.plan = { start: new Date().toDateString(), ids: Array(7).fill(null) }; state.shop = {}; };
+  function planWeek() {   // fill every day
+    blankWeek();
+    const ids = state.plan.ids;
+    for (let d = 0; d < 7; d++) ids[d] = pickDinner(ids.filter(Boolean));
+  }
+  function fillEmpty() {  // fill only the blank days (or re-roll all if none are blank)
+    const ids = state.plan.ids;
+    if (!ids.includes(null)) return planWeek();
+    ids.forEach((id, d) => { if (id == null) ids[d] = pickDinner(ids.filter(Boolean)); });
+  }
+  let shopping = false, openDay = null;
+  const PLUS = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
+  const RE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 13.7-5.6L20 8.5M20 4v4.5h-4.5M20 12a8 8 0 0 1-13.7 5.6L4 15.5M4 20v-4.5h4.5"/></svg>';
+  function renderWeek() {
+    if (!state.plan) return;
+    const start = new Date(state.plan.start);
+    $("days").innerHTML = state.plan.ids.map((id, d) => {
+      const it = id != null && byId(id);
+      const day = new Date(start.getTime() + d * 864e5).toLocaleDateString("en-GB", { weekday: "short" });
+      if (!it) return `<li class="blank" style="--i:${d}"><span class="d caps">${day}</span><button class="n" data-re="${d}" aria-label="Fill"></button><button class="re add" data-re="${d}" aria-label="Fill">${PLUS}</button></li>`;
+      const rec = openDay === d && recipeOf(it);
+      const detail = rec ? `<li class="detail"><div><ul class="chips">${rec.i.map(x => `<li>${esc(x)}</li>`).join("")}</ul>${rec.m.length ? `<ol>${rec.m.map(x => `<li>${esc(x)}</li>`).join("")}</ol>` : ""}</div></li>` : "";
+      return `<li style="--i:${d}" class="${openDay === d ? "open" : ""}"><span class="d caps">${day}</span><button class="n" data-show="${id}">${recipeOf(it) ? '<span class="dot"></span>' : ""}${esc(it.name)}</button><button class="re" data-re="${d}" aria-label="Swap">${RE}</button></li>` + detail;
+    }).join("");
+  }
+  $("openWeek").onclick = () => { if (!state.plan) blankWeek(); openWeekAnimated(); };
+  $("replan").onclick = () => { fillEmpty(); save(); openWeekAnimated(); };
+  $("clearWeek").onclick = () => {
+    const prev = JSON.stringify(state.plan), prevShop = state.shop;
+    blankWeek(); shopping = false; save(); openWeekAnimated();
+    toast("Cleared", () => { state.plan = JSON.parse(prev); state.shop = prevShop; renderWeek(); save(); });
+  };
+  $("days").onclick = e => {
+    const re = e.target.closest("[data-re]"), sh = e.target.closest("[data-show]");
+    if (re) {
+      const d = +re.dataset.re; const others = state.plan.ids.filter((x, k) => k !== d && x != null);
+      state.plan.ids[d] = pickDinner(others);
+      $("days").classList.remove("stagger");
+      renderWeek(); save();
+      const row = $("days").querySelectorAll(":scope > li:not(.detail)")[d];
+      row.classList.add("swap");
+    }
+    else if (sh) {
+      const d = [...$("days").querySelectorAll(":scope > li:not(.detail)")].indexOf(sh.closest("li"));
+      if (!recipeOf(byId(+sh.dataset.show))) return;
+      openDay = openDay === d ? null : d;
+      $("days").classList.remove("stagger"); renderWeek();
+    }
+  };
+
+  // Long-press Spin = plan the week (fill → dot flies to calendar → week slides in)
+  // Hold-to-plan: the panel becomes a slot-machine week, each day settles in turn, then it hands off to the calendar.
+  function reelWeek(done) {
+    const ids = state.plan.ids, start = new Date(state.plan.start), names = dinnerPool().map(i => i.name);
+    const finish = () => { const c = $("openWeek"); c.classList.remove("bump"); void c.offsetWidth; c.classList.add("bump"); done(); };
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches || !names.length) return finish();
+    spinning = true;
+    const panel = document.querySelector(".panel");
+    const reel = document.createElement("ul"); reel.className = "reel";
+    reel.innerHTML = ids.map((id, d) => `<li style="--i:${d}"><span class="caps">${new Date(start.getTime() + d * 864e5).toLocaleDateString("en-GB", { weekday: "short" })}</span><b></b></li>`).join("");
+    panel.classList.add("reeling"); panel.appendChild(reel);
+    const rows = [...reel.children], settled = new Set();
+    const tick = setInterval(() => rows.forEach((li, d) => { if (!settled.has(d)) li.lastChild.textContent = rnd(names); }), 60);
+    ids.forEach((id, d) => setTimeout(() => {
+      settled.add(d); rows[d].lastChild.textContent = byId(id).name; rows[d].classList.add("set");
+    }, 380 + d * 150));
+    setTimeout(() => {
+      clearInterval(tick);
+      reel.classList.add("away");
+      setTimeout(() => { reel.remove(); panel.classList.remove("reeling"); spinning = false; finish(); }, 320);
+    }, 380 + 6 * 150 + 650);
+  }
+  function openWeekAnimated() {
+    openDay = null;
+    shopping = false; renderWeek();
+    $("days").classList.remove("stagger"); void $("days").offsetWidth; $("days").classList.add("stagger");
+    open("week");
+  }
+  let lp = null, lpFired = false;
+  $("spin").addEventListener("pointerdown", () => {
+    lpFired = false; $("spin").classList.add("holding");
+    lp = setTimeout(() => {
+      lpFired = true; $("spin").classList.remove("holding");
+      planWeek(); save(); const c = $("openWeek"); c.classList.remove("bump"); void c.offsetWidth; c.classList.add("bump"); openWeekAnimated();
+    }, 670);
+  });
+  ["pointerup", "pointerleave", "pointercancel"].forEach(ev => $("spin").addEventListener(ev, () => { clearTimeout(lp); $("spin").classList.remove("holding"); }));
+  $("spin").addEventListener("contextmenu", e => e.preventDefault());
+  $("yesList").onclick = e => {
+    const rm = e.target.closest("button[data-rm]");
+    if (rm) {
+      const it = state.items.find(i => i.id === +rm.dataset.rm);
+      it.s = "new"; render(); save();
+      return toast("Removed", () => { it.s = "liked"; render(); save(); });
+    }
+    const b = e.target.closest("button[data-id]"); if (!b) return;
+    state.last = +b.dataset.id;
+    closeAll(); render(); land(); save();
+  };
+  $("nopeList").onclick = e => {
+    const b = e.target.closest("button[data-id]"); if (!b) return;
+    const it = state.items.find(i => i.id === +b.dataset.id);
+    it.s = "new";
+    render(); save();
+    toast("Removed", () => { it.s = "vetoed"; render(); save(); });
+  };
+
+  $("spin").onclick = () => { if (lpFired) { lpFired = false; return; } spin(); };
+  $("nope").onclick = () => rate("vetoed");
+  $("yum").onclick = () => rate("liked");
+  $("toastUndo").onclick = () => { const f = undoFn; undoFn = null; $("toast").classList.remove("show"); if (f) f(); };
+
+  render();
+  try {
+    const ui = JSON.parse(sessionStorage.getItem(UI) || "null");
+    sessionStorage.removeItem(UI);
+    if (ui && Date.now() - ui.at < 30000 && ui.open && ui.open !== "recipe") {
+      document.documentElement.classList.add("still");
+      if (ui.open === "week") { shopping = !!ui.shopping; renderWeek(); }
+      $(ui.open).hidden = false;
+      setTimeout(() => document.documentElement.classList.remove("still"), 400);
+    }
+  } catch (e) {}
+  if (window.claude && claude.use) claude.use("artifact").then(a => { artifact = a; }).catch(() => {});
+})();
+</script>
+</body>
+</html>

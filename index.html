@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-Time</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
+<style>
+  :root { color-scheme:light dark; --bg:#fff; --fg:#111; --on:#fff; --mute:#9a9a9a; --panel:#f3f2f0; --line:#e4e2dc;
+          --glass:rgba(255,255,255,.82); --scrim:rgba(17,17,17,.18); --shadow:rgba(0,0,0,.10); --ring:rgba(0,0,0,.05); --hair:rgba(0,0,0,.08); }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0f0f0e; --fg:#f2f1ee; --on:#111; --mute:#7d7c78; --panel:#1c1c1a; --line:#2c2c29;
+            --glass:rgba(28,28,26,.78); --scrim:rgba(0,0,0,.45); --shadow:rgba(0,0,0,.45); --ring:rgba(255,255,255,.06); --hair:rgba(255,255,255,.12); }
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { font:400 15px/1.35 Inter, "Helvetica Neue", Arial, sans-serif; color:var(--fg); background:var(--bg);
+         min-height:100vh; display:flex; flex-direction:column; padding:20px 24px 124px; gap:16px; }
+  .caps { text-transform:uppercase; letter-spacing:.06em; }
+  button { font:inherit; color:inherit; background:none; border:0; padding:0; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  svg { display:block; }
+
+  header { display:flex; justify-content:space-between; align-items:center; }
+  .actions { display:flex; gap:8px; }
+  .mark { font-weight:600; font-size:20px; letter-spacing:-.01em; }
+  .actions { display:flex; gap:8px; }
+  .iconbtn { width:44px; height:44px; border-radius:14px; background:var(--panel); display:grid; place-items:center; position:relative; }
+  .iconbtn:active { transform:scale(.94); }
+  .badge { position:absolute; top:-4px; right:-4px; min-width:18px; height:18px; padding:0 5px; border-radius:9px;
+           background:var(--fg); color:var(--on); font-size:11px; font-weight:600; display:grid; place-items:center; }
+  .badge[hidden] { display:none; }
+
+  .panel { background:var(--panel); flex:1; min-height:46vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+           padding:32px 24px; text-align:center; overflow:hidden; border-radius:16px; }
+  #pick { font-size:clamp(36px, 7vw, 76px); font-weight:500; letter-spacing:-.025em; line-height:1.05; max-width:13ch; }
+  #pick.empty { color:var(--mute); }
+  #pick.has { cursor:pointer; }
+  #marks { display:flex; gap:10px; align-items:center; justify-content:center; height:22px; margin-bottom:12px; }
+  #marks .dot { width:8px; height:8px; border-radius:50%; background:var(--fg); }
+  #marks .tick { width:22px; height:22px; border-radius:50%; background:var(--fg); color:var(--on); display:grid; place-items:center; }
+  .dock button.on { background:var(--fg); color:var(--on); }
+  .dock { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+  #pick.shuffle { opacity:.25; filter:blur(1.5px); }
+  #pick.land { animation:land .35s cubic-bezier(.2,.8,.2,1); }
+  @keyframes land { from { opacity:0; transform:translateY(10px) scale(.98); } to { opacity:1; transform:none; } }
+
+  .dock { position:fixed; left:50%; bottom:20px; transform:translateX(-50%); z-index:10; display:flex; gap:6px; padding:6px;
+          background:var(--glass); -webkit-backdrop-filter:blur(16px); backdrop-filter:blur(16px); border-radius:20px;
+          box-shadow:0 10px 32px var(--shadow), 0 0 0 1px var(--ring); }
+  .dock button { background:var(--panel); height:58px; width:66px; border-radius:14px; display:grid; place-items:center; transition:opacity .15s, transform .1s; }
+  .dock button:active { transform:scale(.97); }
+  .dock button:disabled { opacity:.35; cursor:default; }
+  .dock #spin { width:150px; background:var(--fg); color:var(--on); font-size:16px; position:relative; overflow:hidden; }
+  #spin span { position:relative; z-index:1; }
+  #spin::after { content:""; position:absolute; inset:0; background:var(--mute); opacity:.45; transform:scaleX(0); transform-origin:left; }
+  #spin.holding::after { transform:scaleX(1); transition:transform .55s linear .12s; }
+  .panel { position:relative; }
+  .panel.reeling #marks, .panel.reeling #pick { opacity:0; transition:opacity .15s; }
+  .reel { position:absolute; inset:0; list-style:none; margin:0; padding:24px; display:flex; flex-direction:column; justify-content:center; gap:4px; }
+  .reel li { display:flex; align-items:baseline; gap:16px; font-size:clamp(17px, 2.6vw, 24px); font-weight:500; letter-spacing:-.01em;
+             opacity:0; animation:rise .3s cubic-bezier(.2,.8,.2,1) both; animation-delay:calc(var(--i) * 35ms); }
+  .reel li span { width:44px; flex:none; color:var(--mute); font-size:13px; font-weight:400; text-align:right; }
+  .reel li b { font-weight:500; opacity:.3; filter:blur(1px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:opacity .15s, filter .15s; }
+  .reel li.set b { opacity:1; filter:none; animation:land .3s cubic-bezier(.2,.8,.2,1); }
+  .reel.away { animation:away .32s cubic-bezier(.5,0,.75,0) forwards; }
+  @keyframes away { to { opacity:0; transform:translateY(-14px) scale(.97); } }
+  .bump { animation:bump .45s cubic-bezier(.3,1.6,.5,1); }
+  @keyframes bump { 40% { transform:scale(1.22); } }
+  .days.stagger > li { animation:rise .35s cubic-bezier(.2,.8,.2,1) both; animation-delay:calc(var(--i) * 45ms + 60ms); }
+  @keyframes rise { from { opacity:0; transform:translateY(10px); } }
+  .days li.swap .n { animation:rise .3s cubic-bezier(.2,.8,.2,1); }
+  .days li.swap .re svg { animation:turn .4s ease; }
+  @keyframes turn { from { transform:rotate(-180deg); } }
+
+  .modal { position:fixed; inset:0; z-index:20; background:var(--scrim); -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+           display:flex; align-items:flex-end; justify-content:center; animation:fade .18s ease; }
+  .modal[hidden] { display:none; }
+  .sheet { width:min(560px, 100%); max-height:86vh; overflow:auto; background:var(--bg); border-radius:22px 22px 0 0;
+           padding:10px 24px 24px; box-shadow:0 -10px 40px var(--shadow), 0 0 0 1px var(--ring); animation:up .28s cubic-bezier(.2,.8,.2,1); }
+  .grab { width:40px; height:4px; border-radius:4px; background:var(--line); margin:0 auto 18px; }
+  .sheet h2 { font-size:28px; font-weight:500; letter-spacing:-.02em; line-height:1.1; margin-bottom:20px; }
+  .sheet h3 { font:inherit; color:var(--mute); margin:18px 0 8px; }
+  .chips { list-style:none; padding:0; display:flex; flex-wrap:wrap; gap:6px; }
+  .chips li { background:var(--panel); border-radius:10px; padding:6px 10px; }
+  .sheet ol { padding-left:20px; line-height:1.6; }
+  .sheet ol li { padding-left:4px; margin-bottom:4px; }
+  .nopelist { list-style:none; padding:0; display:flex; flex-wrap:wrap; gap:6px; }
+  .nopelist button { background:var(--panel); border-radius:10px; padding:9px 12px; display:flex; align-items:center; gap:8px; }
+  .nopelist button svg { color:var(--mute); }
+  .nopelist .split { display:flex; background:var(--panel); border-radius:10px; }
+  .nopelist .split button { background:none; }
+  .nopelist .split button:first-child { padding-right:6px; }
+  .nopelist .split .rm { padding:9px 12px 9px 6px; }
+  .sechead { display:flex; align-items:center; gap:10px; color:var(--mute); font-size:15px; margin:6px 0 12px; }
+  .sic { display:grid; place-items:center; color:var(--fg); }
+  .sechead + .nopelist { margin-bottom:18px; }
+  .divider { height:0; border-top:.5px solid var(--hair); margin:0 0 16px; }
+  .done { width:100%; margin-top:22px; padding:16px; border-radius:14px; background:var(--fg); color:var(--on); display:grid; place-items:center; }
+
+  .toast { position:fixed; left:50%; bottom:100px; z-index:30; border-radius:12px; transform:translate(-50%,16px); background:var(--fg); color:var(--on);
+           padding:14px 18px; display:flex; gap:18px; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; white-space:nowrap; }
+  .toast.show { opacity:1; transform:translate(-50%,0); pointer-events:auto; }
+  .toast button { text-decoration:underline; text-underline-offset:3px; }
+  .toast button[hidden] { display:none; }
+
+  .days { list-style:none; padding:0; }
+  .days > li { display:flex; align-items:center; gap:14px; padding:12px 0; border-bottom:1px solid var(--line); }
+  .days .d { width:38px; color:var(--mute); flex:none; }
+  .days .n { flex:1; font-size:17px; text-align:left; display:flex; align-items:center; gap:8px; }
+  .days .n .dot { width:6px; height:6px; border-radius:50%; background:var(--fg); flex:none; }
+  .days .re { color:var(--mute); width:36px; height:36px; border-radius:10px; display:grid; place-items:center; flex:none; }
+  .days .re:active { background:var(--panel); }
+  .days li.blank .n::before { content:""; display:block; width:56px; height:2px; border-radius:2px; background:var(--line); }
+  .days .re.add { background:var(--panel); color:var(--fg); }
+  .days li.open { border-bottom-color:transparent; }
+  .days li.open .n { font-weight:500; }
+  .days > li.detail { display:block; padding:0 0 16px 52px; border-bottom:1px solid var(--line); }
+  .days li.detail > div { animation:rise .25s cubic-bezier(.2,.8,.2,1); }
+  .days li.detail .chips { margin-bottom:12px; }
+  .days li.detail ol { padding-left:18px; line-height:1.55; color:var(--fg); }
+  .days li.detail ol li { padding:0 0 4px 2px; }
+  .days[hidden], .divider[hidden] { display:none; }
+  .wactions { display:flex; gap:8px; margin-top:22px; }
+  .wactions button { height:52px; border-radius:14px; background:var(--panel); display:grid; place-items:center; width:56px; }
+  .wactions button.on { background:var(--fg); color:var(--on); }
+  .wactions [data-close] { flex:1; background:var(--fg); color:var(--on); }
+  .still .modal, .still .sheet, .still .days li, .modal.back, .modal.back .sheet { animation:none !important; }
+  @keyframes up { from { transform:translateY(100%); } }
+  @keyframes fade { from { opacity:0; } }
+  @media (max-width:720px) {
+    body { padding:16px 16px 116px; }
+    .dock { bottom:16px; }
+    .dock #spin { width:130px; }
+  }
+  @media (prefers-reduced-motion: reduce) { #pick.land, .sheet, .modal { animation:none; } }
+</style>
+</head>
+<body>
+  <header>
+    <div class="mark">T-Time</div>
+    <div class="actions">
+      <button class="iconbtn" id="openWeek" aria-label="Week"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5.5" width="16" height="14" rx="3"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></svg></button>
+      <button class="iconbtn" id="openLists" aria-label="Lists"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h9"/></svg><span class="badge" id="badge" hidden></span></button>
+    </div>
+  </header>
+
+  <section class="panel"><div id="marks"></div><div id="pick" class="empty">What's for tea?</div></section>
+
+  <div class="dock caps">
+    <button id="nope" aria-label="Nope" disabled><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    <button id="spin"><span>Spin</span></button>
+    <button id="yum" aria-label="Ate it" disabled><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5L19.5 7"/></svg></button>
+  </div>
+
+  <div class="modal" id="recipe" hidden>
+    <div class="sheet"><div class="grab"></div><h2 id="rTitle"></h2><div id="rView"></div>
+      <button class="done caps" id="rDone" data-close>Done</button></div>
+  </div>
+
+  <div class="modal" id="lists" hidden>
+    <div class="sheet"><div class="grab"></div>
+      <div class="sechead"><span class="sic yes"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><span id="cntYes"></span></div>
+      <ul class="nopelist" id="yesList"></ul>
+      <div class="divider"></div>
+      <div class="sechead"><span class="sic no"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></span><span id="cntNo"></span></div>
+      <ul class="nopelist" id="nopeList"></ul>
+      <button class="done caps" data-close>Done</button></div>
+  </div>
+
+  <div class="modal" id="week" hidden>
+    <div class="sheet"><div class="grab"></div>
+      <ul class="days" id="days"></ul>
+      <div class="wactions">
+        <button id="replan" aria-label="New week"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 13.7-5.6L20 8.5M20 4v4.5h-4.5M20 12a8 8 0 0 1-13.7 5.6L4 15.5M4 20v-4.5h4.5"/></svg></button>
+        <button id="clearWeek" aria-label="Clear week"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.5h15M9.5 6.5V4.5h5v2M6.5 6.5l1 13h9l1-13M10 10.5v6M14 10.5v6"/></svg></button>
+        <button class="caps" data-close>Done</button>
+      </div></div>
+  </div>
+
+  <div class="toast caps" id="toast"><span id="toastMsg"></span><button id="toastUndo">Undo</button></div>
+
+<script type="application/json" id="state">
+{"last":null,"items":[]}
+</script>
+
+<script>
+(() => {
+  const TEMPLATE = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+  const LS = "t-time";
+  const $ = id => document.getElementById(id);
+
+  // [name, "v" savoury | "s" sweet]
+  const LIB = [["Spaghetti bolognese", "v", "d"], ["Fish pie", "v", "d"], ["Mild chicken curry", "v", "d"], ["Mac & cheese with peas", "v", "d"], ["Shepherd's pie", "v", "d"], ["Cottage pie", "v", "d"], ["Salmon & sweet potato mash", "v", "d"], ["Omelette fingers", "v", "d"], ["Lentil dahl & rice", "v", "d"], ["Turkey meatballs & pasta", "v", "d"], ["Chicken risotto", "v", "d"], ["Pesto pasta", "v", "d"], ["Fish fingers & mash", "v", "d"], ["Mild bean chilli", "v", "d"], ["Pitta pizzas", "v", "d"], ["Chicken stew", "v", "d"], ["Egg fried rice", "v", "d"], ["Tuna pasta bake", "v", "d"], ["Veggie fritters", "v", "d"], ["Beef & veg casserole", "v", "d"], ["Sausage & mash", "v", "d"], ["Chicken nuggets (homemade) & beans", "v", "d"], ["Lasagne", "v", "d"], ["Cheesy leek pasta", "v", "d"], ["Butternut squash risotto", "v", "d"], ["Fish cakes", "v", "d"], ["Chicken & sweetcorn soup with bread", "v", "d"], ["Tomato soup & cheese toast", "v", "d"], ["Scrambled egg on toast", "v", "d"], ["Beans on toast", "v", "d"], ["Jacket potato & cheese", "v", "d"], ["Cheesy baked gnocchi", "v", "d"], ["Chicken fajita wraps (mild)", "v", "d"], ["Beef stroganoff & rice", "v", "d"], ["Mild chicken korma", "v", "d"], ["Sweet potato & chickpea curry", "v", "d"], ["Veggie lasagne", "v", "d"], ["Pea & ham risotto", "v", "d"], ["Salmon pasta", "v", "d"], ["Prawn fried rice", "v", "d"], ["Chicken & broccoli pasta bake", "v", "d"], ["Mini burgers & wedges", "v", "d"], ["Chicken teriyaki noodles", "v", "d"], ["Spinach & ricotta pasta", "v", "d"], ["Carbonara (no added salt)", "v", "d"], ["Quesadillas", "v", "d"], ["Frittata squares", "v", "d"], ["Ham & cheese crêpes", "v", "d"], ["Cauliflower cheese", "v", "d"], ["Toad in the hole", "v", "d"], ["Roast chicken dinner", "v", "d"], ["Bubble & squeak", "v", "d"], ["Irish stew", "v", "d"], ["Chicken pie", "v", "d"], ["Fish chowder", "v", "d"], ["Minestrone with pasta", "v", "d"], ["Mild chilli con carne & rice", "v", "d"], ["Couscous with roast veg", "v", "d"], ["Halloumi & veg skewers", "v", "d"], ["Meatloaf & mash", "v", "d"], ["Chicken & leek pie", "v", "d"], ["Sweet & sour chicken (mild)", "v", "d"], ["Hidden-veg tomato pasta", "v", "d"], ["Cheese & tomato pasta", "v", "d"], ["Baked fish & chips", "v", "d"], ["Turkey burgers", "v", "d"], ["Pasta with peas & bacon", "v", "d"], ["Lamb kofta & pitta", "v", "d"], ["Veg & bean burritos", "v", "d"], ["Chicken satay noodles (smooth peanut)", "v", "d"], ["Mild Thai green curry", "v", "d"], ["Ravioli with butter & cheese", "v", "d"], ["Pea soup & soldiers", "v", "d"], ["Chicken casserole & dumplings", "v", "d"], ["Cheesy polenta & sausages", "v", "d"], ["Stuffed pasta shells", "v", "d"], ["Kedgeree", "v", "d"], ["Savoury muffins & soup", "v", "d"], ["Butter chicken (mild)", "v", "d"], ["Chicken tikka skewers (mild)", "v", "d"], ["Beef & broccoli noodles", "v", "d"], ["Pork & apple meatballs", "v", "d"], ["Lamb hotpot", "v", "d"], ["Spaghetti & meatballs", "v", "d"], ["Sausage casserole", "v", "d"], ["Chicken goujons & sweet potato wedges", "v", "d"], ["Fish tacos (mild)", "v", "d"], ["Cod in tomato sauce", "v", "d"], ["Mackerel pâté on toast", "v", "d"], ["Sardines on toast", "v", "d"], ["Tuna melt", "v", "d"], ["Ham & pea pasta", "v", "d"], ["Chicken noodle soup", "v", "d"], ["Lentil & veg soup", "v", "d"], ["Leek & potato soup", "v", "d"], ["Butternut squash soup", "v", "d"], ["Bean & veg stew", "v", "d"], ["Ratatouille & rice", "v", "d"], ["Veggie sausages & mash", "v", "d"], ["Falafel & hummus pitta", "v", "d"], ["Vegetable korma", "v", "d"], ["Chickpea & spinach curry", "v", "d"], ["Paneer & peas (mild)", "v", "d"], ["Tofu & veg stir-fry", "v", "d"], ["Egg & veg noodles", "v", "d"], ["Chicken paella", "v", "d"], ["Gnocchi with tomato sauce", "v", "d"], ["Mushroom risotto", "v", "d"], ["Spinach & cheese pancakes", "v", "d"], ["Courgette & feta fritters", "v", "d"], ["Sweetcorn fritters", "v", "d"], ["Pea fritters", "v", "d"], ["Cheese & onion potato cakes", "v", "d"], ["Cheese & veg muffins", "v", "d"], ["Pizza scrolls", "v", "d"], ["Cheese scones & soup", "v", "d"], ["Croque monsieur fingers", "v", "d"], ["Chicken & avocado wraps", "v", "d"], ["Hummus & veg wraps", "v", "d"], ["Egg mayo sandwich fingers", "v", "d"], ["Tuna mayo sandwich", "v", "d"], ["Cheese & cucumber sandwich", "v", "d"], ["Shakshuka (mild)", "v", "d"], ["Baked eggs with spinach", "v", "d"], ["Savoury eggy bread", "v", "d"], ["Dippy egg & soldiers", "v", "d"], ["Veggie burgers", "v", "d"], ["Lentil bolognese", "v", "d"], ["Turkey chilli", "v", "d"], ["Chicken & mushroom pie", "v", "d"], ["Cheesy broccoli rice", "v", "d"], ["Mini quiches", "v", "d"], ["Sausage rolls (homemade)", "v", "d"], ["Miso salmon & rice", "v", "d"], ["Teriyaki salmon", "v", "d"], ["Chicken katsu (mild)", "v", "d"], ["Pork stir-fry", "v", "d"], ["Coconut fish curry", "v", "d"], ["Pasta primavera", "v", "d"], ["Orzo with peas & parmesan", "v", "d"], ["Squash mac & cheese", "v", "d"], ["Broccoli pesto pasta", "v", "d"], ["Bean burgers", "v", "d"], ["Black bean quesadillas", "v", "d"], ["Moussaka", "v", "d"], ["Greek chicken & orzo", "v", "d"], ["Chicken souvlaki & pitta", "v", "d"], ["Stuffed peppers", "v", "d"], ["Pork chops & apple mash", "v", "d"], ["Cheesy mash & ham", "v", "d"], ["Baked sweet potato & beans", "v", "d"], ["Fish & veg pie", "v", "d"], ["Chicken & chorizo rice (mild)", "v", "d"], ["Smoked haddock risotto", "v", "d"], ["Pea & spinach soup", "v", "d"], ["Carrot & lentil soup", "v", "d"], ["Sweet potato & coconut soup", "v", "d"], ["Cheese omelette & toast", "v", "d"], ["Mushroom & spinach pasta", "v", "d"], ["Pasta with sardines & tomato", "v", "d"], ["Tuna & sweetcorn rice", "v", "d"], ["Beef hotpot", "v", "d"], ["Chicken & veg traybake", "v", "d"], ["Salmon & pea traybake", "v", "d"], ["Roast pork & veg", "v", "d"], ["Lamb & apricot tagine (mild)", "v", "d"], ["Chicken & pea pilau", "v", "d"], ["Spinach dahl", "v", "d"], ["Egg curry (mild)", "v", "d"], ["Veggie shepherd's pie", "v", "d"], ["Lentil cottage pie", "v", "d"], ["Chickpea burgers", "v", "d"], ["Halloumi fries & dip", "v", "d"], ["Polenta chips & dip", "v", "d"], ["Arancini", "v", "d"], ["Crumpets with cheese & beans", "v", "d"], ["Pancakes with banana", "s", "p"], ["French toast fingers", "s", "p"], ["Porridge with banana", "s", "p"], ["Apple & cinnamon porridge", "s", "p"], ["Overnight oats", "s", "p"], ["Baked oats", "s", "p"], ["Weetabix with milk", "s", "p"], ["Blueberry pancakes", "s", "p"], ["Oat pancakes", "s", "p"], ["Waffles & fruit", "s", "p"], ["Yoghurt & berries", "s", "p"], ["Fromage frais", "s", "p"], ["Rice pudding", "s", "p"], ["Semolina & jam", "s", "p"], ["Chia pudding", "s", "p"], ["Banana bread", "s", "p"], ["Apple muffins", "s", "p"], ["Carrot cake muffins", "s", "p"], ["Sweet potato muffins", "s", "p"], ["Oat bars (homemade)", "s", "p"], ["Fruit crumble", "s", "p"], ["Apple & blackberry crumble", "s", "p"], ["Bread & butter pudding", "s", "p"], ["Custard & banana", "s", "p"], ["Smoothie", "s", "p"], ["Frozen yoghurt bites", "s", "p"], ["Fruit ice lollies (homemade)", "s", "p"], ["Banana ice cream", "s", "p"], ["Toast with cream cheese & banana", "s", "p"], ["Smooth peanut butter on toast", "s", "p"], ["Teacake", "s", "p"], ["Fruit loaf", "s", "p"], ["Scones with fruit", "s", "p"], ["Stewed plums & yoghurt", "s", "p"], ["Stewed apple & custard", "s", "p"], ["Baked apple", "s", "p"], ["Banana & date flapjack", "s", "p"], ["Mango & yoghurt pot", "s", "p"], ["Berry compote & porridge", "s", "p"], ["Cinnamon toast fingers", "s", "p"], ["Hot cross bun", "s", "p"], ["Malt loaf", "s", "p"], ["Crêpes with fruit", "s", "p"], ["Bircher muesli", "s", "p"], ["Granola (no nuts) & yoghurt", "s", "p"], ["Pear & oat crumble", "s", "p"], ["Fruit salad", "s", "p"], ["Banana oat cookies", "s", "p"], ["Apple & raisin scones", "s", "p"], ["Pumpkin muffins", "s", "p"], ["Yoghurt fruit bark", "s", "p"], ["Pancake stack with berries", "s", "p"], ["Coconut rice pudding", "s", "p"], ["Mango lassi", "s", "p"], ["Broccoli", "v", "f"], ["Cauliflower", "v", "f"], ["Steamed carrot sticks", "v", "f"], ["Roasted carrots", "v", "f"], ["Sweet potato", "v", "f"], ["Butternut squash", "v", "f"], ["Peas", "v", "f"], ["Courgette", "v", "f"], ["Green beans", "v", "f"], ["Beetroot", "v", "f"], ["Mushrooms", "v", "f"], ["Parsnip", "v", "f"], ["Swede", "v", "f"], ["Cabbage", "v", "f"], ["Kale (finely chopped)", "v", "f"], ["Spinach", "v", "f"], ["Brussels sprouts (halved)", "v", "f"], ["Asparagus tips", "v", "f"], ["Leek", "v", "f"], ["Celeriac mash", "v", "f"], ["Pumpkin", "v", "f"], ["Aubergine", "v", "f"], ["Red pepper strips", "v", "f"], ["Yellow pepper strips", "v", "f"], ["Cucumber sticks", "v", "f"], ["Cherry tomatoes (quartered)", "v", "f"], ["Sweetcorn", "v", "f"], ["Corn on the cob (small pieces)", "v", "f"], ["Edamame (squashed)", "v", "f"], ["Sugar snap peas", "v", "f"], ["Mangetout", "v", "f"], ["Pak choi", "v", "f"], ["Avocado", "v", "f"], ["Olives (pitted, quartered)", "v", "f"], ["Roast potato", "v", "f"], ["New potatoes", "v", "f"], ["Mashed potato", "v", "f"], ["Potato wedges", "v", "f"], ["Lentils", "v", "f"], ["Chickpeas (squashed)", "v", "f"], ["Butter beans", "v", "f"], ["Kidney beans (squashed)", "v", "f"], ["Black beans (squashed)", "v", "f"], ["Cannellini beans", "v", "f"], ["Baked beans (low sugar)", "v", "f"], ["Chicken strips", "v", "f"], ["Turkey slices", "v", "f"], ["Roast beef strips", "v", "f"], ["Lamb strips", "v", "f"], ["Pork strips", "v", "f"], ["Ham", "v", "f"], ["Salmon flakes", "v", "f"], ["Cod flakes", "v", "f"], ["Haddock", "v", "f"], ["Tuna", "v", "f"], ["Sardines (mashed)", "v", "f"], ["Mackerel (boneless)", "v", "f"], ["Prawns (chopped)", "v", "f"], ["Hard-boiled egg", "v", "f"], ["Scrambled egg", "v", "f"], ["Omelette strips", "v", "f"], ["Tofu cubes", "v", "f"], ["Halloumi", "v", "f"], ["Paneer", "v", "f"], ["Falafel", "v", "f"], ["Cheddar cheese", "v", "f"], ["Mozzarella", "v", "f"], ["Cottage cheese", "v", "f"], ["Cream cheese", "v", "f"], ["Feta", "v", "f"], ["Edam", "v", "f"], ["Pasta shapes", "v", "f"], ["Rice", "v", "f"], ["Couscous", "v", "f"], ["Quinoa", "v", "f"], ["Orzo", "v", "f"], ["Noodles", "v", "f"], ["Bulgur wheat", "v", "f"], ["Polenta", "v", "f"], ["Gnocchi", "v", "f"], ["Pitta bread", "v", "f"], ["Toast fingers", "v", "f"], ["Bagel", "v", "f"], ["Crumpet", "v", "f"], ["English muffin", "v", "f"], ["Wraps", "v", "f"], ["Naan", "v", "f"], ["Chapati", "v", "f"], ["Rice cakes", "v", "f"], ["Oatcakes", "v", "f"], ["Breadsticks", "v", "f"], ["Crackers", "v", "f"], ["Cheese straws", "v", "f"], ["Hummus", "v", "f"], ["Guacamole", "v", "f"], ["Tzatziki", "v", "f"], ["Bean dip", "v", "f"], ["Pesto", "v", "f"], ["Banana", "s", "f"], ["Apple (thin slices)", "s", "f"], ["Pear", "s", "f"], ["Mango", "s", "f"], ["Melon", "s", "f"], ["Watermelon", "s", "f"], ["Pineapple", "s", "f"], ["Kiwi", "s", "f"], ["Strawberries (quartered)", "s", "f"], ["Raspberries", "s", "f"], ["Blueberries (squashed)", "s", "f"], ["Blackberries (halved)", "s", "f"], ["Grapes (quartered lengthways)", "s", "f"], ["Cherries (pitted, quartered)", "s", "f"], ["Plum", "s", "f"], ["Peach", "s", "f"], ["Nectarine", "s", "f"], ["Apricot", "s", "f"], ["Orange segments", "s", "f"], ["Clementine", "s", "f"], ["Papaya", "s", "f"], ["Figs", "s", "f"], ["Dates (chopped)", "s", "f"], ["Dried apricot (chopped)", "s", "f"], ["Stewed apple", "s", "f"], ["Stewed pear", "s", "f"], ["Greek yoghurt", "s", "f"], ["Natural yoghurt", "s", "f"]];
+  // name: "ingredients;… | step;…"
+  const RECIPES = {
+"Spaghetti bolognese": "Beef mince;Onion;Carrot;Garlic;Tinned tomatoes;Spaghetti|Soften onion, carrot & garlic;Brown the mince;Add tomatoes, simmer 20 min;Toss with spaghetti, snip pasta short for Theo",
+"Fish pie": "White fish & salmon;Milk;Butter;Flour;Peas;Potatoes|Poach fish in milk;Make a white sauce with butter, flour & the milk;Flake in fish & peas;Top with mash, bake 25 min at 200°C",
+"Mild chicken curry": "Chicken thighs;Onion;Garlic;Mild curry powder;Coconut milk;Rice|Soften onion & garlic;Add spice, then diced chicken;Pour in coconut milk, simmer 20 min;Serve on rice",
+"Mac & cheese with peas": "Macaroni;Butter;Flour;Milk;Cheddar;Frozen peas|Cook pasta, add peas for the last 2 min;Melt butter, stir in flour, whisk in milk;Melt in cheese;Mix together",
+"Shepherd's pie": "Lamb mince;Onion;Carrot;Tomato purée;Low-salt stock;Potatoes|Brown mince with onion & carrot;Add purée & stock, simmer 15 min;Top with mash;Bake 25 min at 200°C",
+"Cottage pie": "Beef mince;Onion;Carrot;Peas;Low-salt stock;Potatoes|Brown mince with veg;Add stock, simmer 15 min;Top with mash;Bake 25 min at 200°C",
+"Salmon & sweet potato mash": "Salmon fillet;Sweet potato;Butter;Broccoli|Roast salmon 15 min at 200°C;Boil sweet potato, mash with butter;Steam broccoli;Flake salmon on the mash",
+"Omelette fingers": "Eggs;Splash of milk;Grated cheese;Finely chopped spinach|Whisk everything;Cook in a buttered pan on low until set;Flip, cook 1 min;Cut into fingers",
+"Lentil dahl & rice": "Red lentils;Onion;Garlic;Ginger;Mild curry powder;Tinned tomatoes;Rice|Soften onion, garlic & ginger;Add spice, lentils & tomatoes with water;Simmer 25 min until soft;Serve with rice",
+"Turkey meatballs & pasta": "Turkey mince;Grated courgette;Breadcrumbs;Egg;Passata;Pasta|Mix mince, courgette, crumbs & egg, roll small balls;Bake 15 min at 200°C;Warm in passata;Serve with pasta",
+"Chicken risotto": "Chicken;Onion;Risotto rice;Low-salt stock;Peas;Parmesan|Soften onion, add rice;Add stock a ladle at a time, 20 min;Stir in cooked chicken & peas;Finish with parmesan",
+"Pesto pasta": "Pasta;Pesto (nut-free or finely blended);Peas;Parmesan|Cook pasta with peas;Drain, stir through pesto;Top with parmesan",
+"Fish fingers & mash": "White fish;Egg;Breadcrumbs;Potatoes;Peas|Cut fish into fingers;Dip in egg then crumbs;Bake 15 min at 200°C;Serve with mash & peas",
+"Mild bean chilli": "Kidney beans;Black beans;Onion;Pepper;Mild paprika;Tinned tomatoes;Rice|Soften onion & pepper;Add paprika, beans & tomatoes;Simmer 20 min;Squash some beans, serve with rice",
+"Pitta pizzas": "Pitta breads;Passata;Mozzarella;Toppings: ham, pepper, sweetcorn|Spread passata on pitta;Add cheese & toppings;Bake 8–10 min at 200°C;Cut into strips",
+"Chicken stew": "Chicken thighs;Onion;Carrot;Potato;Low-salt stock|Brown chicken;Add veg & stock;Simmer 40 min;Shred chicken small",
+"Egg fried rice": "Cooked rice (chilled);Eggs;Peas;Sweetcorn;Low-salt soy|Stir-fry peas & corn;Add rice, heat through;Push aside, scramble eggs;Mix with a dash of soy",
+"Tuna pasta bake": "Pasta;Tinned tuna;Sweetcorn;Passata;Cheddar|Cook pasta;Mix with tuna, corn & passata;Top with cheese;Bake 20 min at 200°C",
+"Veggie fritters": "Grated courgette;Grated carrot;Sweetcorn;Egg;Self-raising flour;Cheese|Squeeze water from courgette;Mix everything into a batter;Fry spoonfuls 2–3 min each side",
+"Beef & veg casserole": "Stewing beef;Onion;Carrot;Parsnip;Low-salt stock;Tomato purée|Brown beef;Add veg, purée & stock;Cook covered 2 hrs at 160°C;Shred small",
+"Sausage & mash": "Low-salt sausages;Potatoes;Butter;Milk;Peas;Onion gravy|Bake sausages 25 min;Mash potatoes with butter & milk;Serve with peas & a little gravy;Slice sausages lengthways",
+"Chicken nuggets (homemade) & beans": "Chicken breast;Egg;Breadcrumbs;Low-sugar baked beans|Cut chicken into chunks;Dip in egg, then crumbs;Bake 15–18 min at 200°C;Serve with beans",
+"Lasagne": "Bolognese sauce;Lasagne sheets;White sauce;Cheddar|Layer sauce, sheets, white sauce;Repeat;Top with cheese;Bake 35 min at 190°C",
+"Cheesy leek pasta": "Pasta;Leek;Butter;Cream cheese;Cheddar|Soften sliced leek in butter;Stir in cream cheese & splash of pasta water;Toss with pasta;Grate over cheese",
+"Butternut squash risotto": "Butternut squash;Onion;Risotto rice;Low-salt stock;Parmesan|Roast squash cubes 25 min;Make risotto with onion, rice & stock;Mash in half the squash;Fold in the rest, add parmesan",
+"Fish cakes": "White fish or salmon;Mashed potato;Spring onion;Egg;Breadcrumbs|Mix flaked fish, mash & onion;Shape small cakes;Dip in egg & crumbs;Bake 20 min at 200°C",
+"Chicken & sweetcorn soup with bread": "Cooked chicken;Sweetcorn;Onion;Potato;Low-salt stock;Bread|Soften onion, add potato & stock;Simmer 15 min;Add corn & chicken;Blend half, serve with bread",
+"Tomato soup & cheese toast": "Tinned tomatoes;Onion;Carrot;Low-salt stock;Bread;Cheddar|Simmer veg & tomatoes in stock 20 min;Blend smooth;Grill cheese on toast;Cut into soldiers",
+"Scrambled egg on toast": "Eggs;Butter;Milk;Bread|Whisk eggs with milk;Cook slowly in butter, stirring;Serve on buttered toast fingers",
+"Beans on toast": "Low-sugar baked beans;Bread;Butter;Grated cheese|Warm beans;Toast & butter bread;Spoon over, add cheese;Cut small",
+"Jacket potato & cheese": "Baking potato;Butter;Cheddar;Beans or tuna (optional)|Bake 1 hr at 200°C;Split, add butter & cheese;Mash the inside so it's easy to scoop",
+"Cheesy baked gnocchi": "Gnocchi;Passata;Spinach;Mozzarella|Boil gnocchi 2 min;Mix with passata & spinach;Top with mozzarella;Bake 15 min at 200°C;Halve gnocchi for Theo",
+"Chicken fajita wraps (mild)": "Chicken strips;Peppers;Onion;Mild paprika;Wraps;Yoghurt|Fry chicken, peppers & onion with paprika;Fill wraps;Add yoghurt;Roll & cut into pinwheels",
+"Beef stroganoff & rice": "Beef strips;Mushrooms;Onion;Paprika;Crème fraîche;Rice|Fry beef quickly, remove;Soften onion & mushroom;Add paprika & crème fraîche, return beef;Serve on rice",
+"Mild chicken korma": "Chicken;Onion;Korma paste (mild);Coconut milk;Ground almonds;Rice|Soften onion, add paste;Add chicken;Pour in coconut milk & almonds, simmer 20 min;Serve with rice",
+"Sweet potato & chickpea curry": "Sweet potato;Chickpeas;Onion;Mild curry powder;Coconut milk;Spinach|Soften onion, add spice;Add sweet potato, chickpeas & coconut milk;Simmer 20 min;Stir in spinach",
+"Veggie lasagne": "Courgette;Pepper;Lentils;Passata;Lasagne sheets;White sauce;Cheese|Simmer veg & lentils in passata;Layer with sheets & white sauce;Top with cheese;Bake 35 min at 190°C",
+"Pea & ham risotto": "Risotto rice;Onion;Low-salt stock;Peas;Ham;Parmesan|Make risotto with onion, rice & stock;Add peas for the last 5 min;Stir in chopped ham;Finish with parmesan",
+"Salmon pasta": "Pasta;Salmon fillet;Cream cheese;Peas;Lemon|Bake salmon 15 min;Cook pasta & peas;Melt cream cheese with pasta water;Flake in salmon, squeeze of lemon",
+"Prawn fried rice": "Cooked prawns;Chilled rice;Peas;Egg;Low-salt soy|Stir-fry peas;Add rice & chopped prawns;Scramble in egg;Dash of soy",
+"Chicken & broccoli pasta bake": "Pasta;Chicken;Broccoli;White sauce;Cheddar|Cook pasta, adding broccoli for last 3 min;Mix with chicken & sauce;Top with cheese;Bake 20 min at 200°C",
+"Mini burgers & wedges": "Beef mince;Grated onion;Egg;Potatoes;Mini buns|Mix mince, onion & egg, shape small patties;Cut potatoes into wedges, roast 30 min;Grill burgers 8–10 min;Serve in mini buns",
+"Chicken teriyaki noodles": "Chicken;Noodles;Pak choi or broccoli;Low-salt soy;Honey;Garlic|Fry chicken;Add veg;Stir in soy, honey & garlic;Toss with noodles, snip short",
+"Spinach & ricotta pasta": "Pasta;Spinach;Ricotta;Parmesan;Nutmeg|Wilt spinach;Blend with ricotta & parmesan;Toss with pasta;Pinch of nutmeg",
+"Carbonara (no added salt)": "Spaghetti;Egg yolks;Parmesan;Ham or lardons (small amount);Peas|Cook pasta & peas;Fry ham;Off the heat, toss pasta with yolks & cheese;Loosen with pasta water",
+"Pancakes with banana": "Flour;Egg;Milk;Banana;Yoghurt|Whisk flour, egg & milk;Cook small pancakes;Top with sliced banana & yoghurt",
+"French toast fingers": "Bread;Egg;Milk;Cinnamon;Berries|Whisk egg, milk & cinnamon;Dip bread;Fry in butter until golden;Cut into fingers, serve with berries",
+"Quesadillas": "Wraps;Cheddar;Beans or chicken;Sweetcorn|Scatter filling over half a wrap;Fold;Toast in a dry pan 2 min each side;Cut into triangles",
+"Frittata squares": "Eggs;Potato;Peas;Pepper;Cheese|Fry diced potato until soft;Add veg;Pour over whisked eggs & cheese;Finish under the grill;Cut into squares",
+"Ham & cheese crêpes": "Flour;Egg;Milk;Ham;Cheese|Whisk a thin batter;Cook thin crêpes;Fill with ham & cheese, fold;Warm until melted",
+"Cauliflower cheese": "Cauliflower;Butter;Flour;Milk;Cheddar|Steam cauliflower;Make a cheese sauce;Pour over;Bake 20 min at 200°C",
+"Toad in the hole": "Low-salt sausages;Flour;Eggs;Milk;Oil|Heat oil in a tin at 220°C;Brown sausages 10 min;Pour in batter;Bake 25 min, don't open the oven",
+"Roast chicken dinner": "Chicken;Potatoes;Carrots;Broccoli;Low-salt gravy|Roast chicken;Roast potatoes alongside;Steam veg;Shred chicken small",
+"Bubble & squeak": "Leftover mash;Cabbage or sprouts;Onion;Egg (optional)|Soften onion & greens;Mix into mash;Shape patties;Fry until crisp",
+"Irish stew": "Lamb;Potatoes;Onion;Carrot;Low-salt stock|Layer lamb & veg;Add stock;Simmer 1.5 hrs;Shred lamb small",
+"Chicken pie": "Chicken;Leek;Carrot;White sauce;Puff pastry|Cook chicken & veg in sauce;Pour into a dish;Top with pastry;Bake 25 min at 200°C",
+"Fish chowder": "White fish;Potato;Onion;Sweetcorn;Milk|Soften onion, add potato & milk;Simmer 15 min;Add fish & corn;Cook 5 min, flake",
+"Minestrone with pasta": "Onion;Carrot;Celery;Tinned tomatoes;Small pasta;Beans;Low-salt stock|Soften veg;Add tomatoes & stock;Simmer 15 min;Add pasta & beans, cook 8 min",
+"Mild chilli con carne & rice": "Beef mince;Onion;Pepper;Kidney beans;Mild paprika;Tinned tomatoes;Rice|Brown mince with onion & pepper;Add paprika, beans & tomatoes;Simmer 25 min;Serve with rice",
+"Couscous with roast veg": "Couscous;Courgette;Pepper;Red onion;Chickpeas;Feta|Roast veg 25 min;Pour boiling water over couscous, cover 5 min;Mix with veg & chickpeas;Crumble feta",
+"Halloumi & veg skewers": "Halloumi;Courgette;Pepper;Cherry tomatoes;Pitta|Cube & thread onto skewers;Grill 8–10 min turning;Slide off skewers for Theo;Serve with pitta",
+"Meatloaf & mash": "Beef mince;Grated carrot;Onion;Egg;Breadcrumbs;Potatoes|Mix & press into a tin;Bake 45 min at 180°C;Slice;Serve with mash",
+"Chicken & leek pie": "Chicken;Leek;Crème fraîche;Puff pastry|Soften leek;Add chicken & crème fraîche;Top with pastry;Bake 25 min at 200°C",
+"Sweet & sour chicken (mild)": "Chicken;Pepper;Pineapple chunks;Tomato purée;Low-salt soy;Rice|Fry chicken & pepper;Add pineapple with its juice, purée & soy;Simmer 5 min;Serve with rice",
+"Hidden-veg tomato pasta": "Pasta;Onion;Carrot;Courgette;Pepper;Passata|Soften all the veg;Add passata, simmer 15 min;Blend smooth;Toss with pasta",
+"Cheese & tomato pasta": "Pasta;Passata;Cheddar;Basil|Warm passata;Toss with pasta;Grate over cheese",
+"Baked fish & chips": "White fish;Breadcrumbs;Egg;Potatoes;Peas|Cut potatoes into chips, bake 30 min;Crumb the fish, bake 15 min;Serve with mushy peas",
+"Turkey burgers": "Turkey mince;Grated apple;Breadcrumbs;Egg|Mix everything;Shape small patties;Bake 15 min at 200°C",
+"Pasta with peas & bacon": "Pasta;Peas;Bacon (small amount);Crème fraîche|Fry chopped bacon;Cook pasta & peas;Stir through crème fraîche & bacon",
+"Lamb kofta & pitta": "Lamb mince;Grated onion;Cumin;Pitta;Yoghurt;Cucumber|Mix mince, onion & cumin;Shape small sausages;Grill 10 min;Serve in pitta with yoghurt & cucumber",
+"Veg & bean burritos": "Wraps;Black beans;Rice;Sweetcorn;Pepper;Cheese|Warm beans, corn & pepper;Fill wraps with rice, beans & cheese;Roll & toast;Slice into rounds",
+"Chicken satay noodles (smooth peanut)": "Chicken;Noodles;Smooth peanut butter;Coconut milk;Low-salt soy;Broccoli|Fry chicken & broccoli;Whisk peanut butter, coconut milk & soy;Toss everything with noodles;Snip short",
+"Mild Thai green curry": "Chicken;Green curry paste (a little);Coconut milk;Green beans;Rice|Fry a little paste;Add chicken & coconut milk;Add beans, simmer 15 min;Serve with rice",
+"Ravioli with butter & cheese": "Fresh ravioli;Butter;Parmesan;Peas|Boil ravioli & peas;Toss in butter;Grate over parmesan;Halve ravioli",
+"Pea soup & soldiers": "Frozen peas;Onion;Potato;Low-salt stock;Bread|Soften onion, add potato & stock;Simmer 10 min;Add peas, 3 min;Blend, serve with toast soldiers",
+"Chicken casserole & dumplings": "Chicken thighs;Carrot;Onion;Low-salt stock;Self-raising flour;Butter|Make a chicken & veg stew;Rub flour & butter, add water, roll small dumplings;Drop on top, cover 20 min",
+"Cheesy polenta & sausages": "Quick polenta;Milk;Parmesan;Low-salt sausages;Tomato sauce|Bake sausages;Cook polenta in milk;Stir in parmesan;Serve with sliced sausages & sauce",
+"Stuffed pasta shells": "Large pasta shells;Ricotta;Spinach;Passata;Mozzarella|Par-cook shells;Fill with ricotta & spinach;Sit in passata, top with mozzarella;Bake 20 min at 190°C",
+"Kedgeree": "Smoked haddock (unsmoked for less salt);Rice;Onion;Mild curry powder;Hard-boiled egg;Peas|Poach fish;Soften onion with spice;Stir in rice & peas;Flake fish in, top with chopped egg",
+"Savoury muffins & soup": "Self-raising flour;Egg;Milk;Cheese;Grated courgette;Any soup|Mix muffin ingredients;Bake in a muffin tin 20 min at 190°C;Serve with soup for dunking",
+"Porridge with banana": "Oats;Whole milk;Banana|Simmer oats in milk 4–5 min, stirring;Mash in half the banana;Slice the rest on top",
+"Apple & cinnamon porridge": "Oats;Whole milk;Apple;Cinnamon|Grate apple into oats & milk;Simmer 5 min;Pinch of cinnamon",
+"Overnight oats": "Oats;Whole milk or yoghurt;Grated apple or berries|Mix everything in a jar;Leave in the fridge overnight;Stir & serve",
+"Baked oats": "Oats;Banana;Egg;Milk;Blueberries|Blend oats, banana, egg & milk;Pour into a dish, add berries;Bake 20 min at 180°C",
+"Blueberry pancakes": "Flour;Egg;Milk;Blueberries (squashed)|Whisk a thick batter;Spoon small pancakes into a pan;Press in blueberries;Flip when bubbles form",
+"Oat pancakes": "Oats;Banana;Egg;Milk|Blend everything;Cook small pancakes 2 min each side",
+"Rice pudding": "Pudding rice;Whole milk;Vanilla|Simmer rice in milk, stirring, 30 min;Add vanilla;Serve warm with fruit",
+"Chia pudding": "Chia seeds;Whole milk;Mango purée|Stir seeds into milk;Chill 2 hrs;Top with mango",
+"Banana bread": "Ripe bananas;Self-raising flour;Egg;Butter;Cinnamon|Mash bananas;Mix in melted butter, egg, flour & cinnamon;Bake in a loaf tin 45 min at 180°C",
+"Apple muffins": "Self-raising flour;Grated apple;Egg;Milk;Butter;Cinnamon|Mix wet & dry;Fold in apple;Bake in mini muffin tin 15 min at 190°C",
+"Fruit crumble": "Apples or pears;Berries;Oats;Flour;Butter|Chop fruit into a dish;Rub flour, oats & butter to crumbs;Scatter over;Bake 25 min at 190°C",
+"Bread & butter pudding": "Bread;Butter;Eggs;Milk;Raisins (chopped)|Butter bread, cut triangles;Layer in a dish;Pour over whisked egg & milk;Bake 30 min at 180°C",
+"Smoothie": "Banana;Berries;Yoghurt;Milk|Blend everything;Serve in an open cup",
+"Banana ice cream": "Frozen banana;Splash of milk|Blend frozen banana until creamy;Serve straight away",
+"Banana oat cookies": "Banana;Oats;Cinnamon|Mash banana, mix with oats;Spoon onto a tray;Bake 15 min at 180°C",
+"Crêpes with fruit": "Flour;Egg;Milk;Banana or berries;Yoghurt|Whisk a thin batter;Cook thin crêpes;Fill with fruit & yoghurt, roll up",
+"Fruit salad": "Melon;Kiwi;Strawberries;Banana;Orange|Chop everything small;Mix gently",
+"Mango lassi": "Mango;Natural yoghurt;Milk|Blend until smooth;Serve in an open cup"
+};
+  const FLAV = Object.fromEntries(LIB.map(([n, t]) => [n.toLowerCase(), t]));
+  const KIND = Object.fromEntries(LIB.map(([n, , k]) => [n.toLowerCase(), k]));
+
+  let state = JSON.parse($("state").textContent);
+  try { const l = JSON.parse(localStorage.getItem(LS)); if (l && l.savedAt > (state.savedAt || 0)) state = l; } catch (e) {}
+  delete state.flav;
+  state.recent = state.recent || [];
+  state.shop = state.shop || {};
+
+  // Keep anything already rated; refresh the rest from the library.
+  state.items = state.items.filter(i => i.s !== "new" || FLAV[i.name.toLowerCase()]);
+  const have = new Set(state.items.map(i => i.name.toLowerCase()));
+  let nextId = Math.max(0, ...state.items.map(i => i.id)) + 1;
+  LIB.forEach(([name]) => { if (!have.has(name.toLowerCase())) state.items.push({ id: nextId++, name, s: "new" }); });
+  const flavOf = i => FLAV[i.name.toLowerCase()] || "v";
+
+  let artifact = null, t = null, toastT = null, undoFn = null, spinning = false;
+  // Syncing reloads the page, so only sync when nothing is in progress.
+  const UI = "t-time-ui";
+  let dirty = false;
+  const busy = () => spinning || [...document.querySelectorAll(".modal")].some(m => !m.hidden) || $("toast").classList.contains("show");
+  function publishNow(force) {
+    t = null;
+    if (!artifact || !dirty) return;
+    if (!force && busy()) { t = setTimeout(publishNow, 5000); return; }
+    dirty = false;
+    try { sessionStorage.setItem(UI, JSON.stringify({ open: [...document.querySelectorAll(".modal")].find(m => !m.hidden)?.id || null, shopping, at: Date.now() })); } catch (e) {}
+    const json = JSON.stringify(state).replace(/</g, "\\u003c");
+    const html = TEMPLATE.replace(/(<script type="application\/json" id="state">)[\s\S]*?(<\/script>)/,
+      (_, a, b) => a + "\n" + json + "\n" + b);
+    artifact.publish(html).catch(() => {});
+  }
+  function save() {
+    state.savedAt = Date.now();
+    try { localStorage.setItem(LS, JSON.stringify(state)); } catch (e) {}
+    dirty = true;
+    clearTimeout(t);
+    t = setTimeout(publishNow, 20000);
+  }
+  document.addEventListener("visibilitychange", () => { if (document.hidden && dirty) { clearTimeout(t); publishNow(true); } });
+  window.addEventListener("pagehide", () => { if (dirty) publishNow(true); });
+
+  function toast(msg, undo) {
+    $("toastMsg").textContent = msg;
+    undoFn = undo || null;
+    $("toastUndo").hidden = !undo;
+    $("toast").classList.add("show");
+    clearTimeout(toastT);
+    toastT = setTimeout(() => $("toast").classList.remove("show"), 3500);
+  }
+
+  const esc = s => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const rnd = a => a[Math.floor(Math.random() * a.length)];
+  const pool = () => state.items.filter(i => i.s !== "vetoed");
+  const current = () => state.items.find(i => i.id === state.last && i.s !== "vetoed");
+  function recipeOf(it) {
+    const raw = RECIPES[it.name]; if (!raw) return null;
+    const [i, m] = raw.split("|");
+    return { i: i.split(";"), m: (m || "").split(";").filter(Boolean) };
+  }
+
+  // Variety: untried foods come up more, liked ones less, and anything seen recently rarely.
+  function weight(i) {
+    let w = i.s === "liked" ? 1 : 3;
+    const r = state.recent.indexOf(i.id);
+    if (r !== -1) w *= 0.05 + 0.95 * (r / state.recent.length);
+    return w;
+  }
+  function weighted(list) {
+    const ws = list.map(weight), total = ws.reduce((a, b) => a + b, 0);
+    let x = Math.random() * total;
+    for (let k = 0; k < list.length; k++) { x -= ws[k]; if (x <= 0) return list[k]; }
+    return list[list.length - 1];
+  }
+  function remember(id) {
+    state.recent = state.recent.filter(x => x !== id);
+    state.recent.push(id);
+    if (state.recent.length > 40) state.recent.shift();
+  }
+
+  function land() { const p = $("pick"); p.classList.remove("land"); void p.offsetWidth; p.classList.add("land"); }
+
+  function spin() {
+    if (spinning) return;
+    const p = pool();
+    if (!p.length) { state.last = null; return render("Nothing left"); }
+    const choice = weighted(p.length > 1 ? p.filter(i => i.id !== state.last) : p);
+    const done = () => { $("pick").classList.remove("shuffle"); state.last = choice.id; remember(choice.id); spinning = false; render(); land(); save(); };
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return done();
+    spinning = true;
+    $("nope").disabled = $("yum").disabled = true;
+    $("pick").classList.remove("empty", "has");
+    $("marks").innerHTML = "";
+    $("pick").classList.add("shuffle");
+    let n = 0;
+    (function tick() { $("pick").textContent = rnd(p).name; if (++n < 6) setTimeout(tick, 55); else setTimeout(done, 55); })();
+  }
+
+  function rate(s) {
+    const cur = current(); if (!cur) return;
+    const prev = cur.s;
+    if (s === "liked" && prev === "liked") s = "new";
+    cur.s = s;
+    toast(s === "vetoed" ? "Nope’d" : s === "liked" ? "Nice one" : "Unticked", () => { cur.s = prev; state.last = cur.id; render(); land(); save(); });
+    if (s === "vetoed") return spin();   // straight on to the next one
+    render(); save();
+  }
+
+  const BIN = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.5h15M9.5 6.5V4.5h5v2M6.5 6.5l1 13h9l1-13M10 10.5v6M14 10.5v6"/></svg>';
+  const X = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  function render(msg) {
+    const cur = current();
+    $("pick").textContent = cur ? cur.name : (msg || "What's for tea?");
+    $("pick").classList.toggle("empty", !cur);
+    $("pick").classList.toggle("has", !!(cur && recipeOf(cur)));
+    $("marks").innerHTML = !cur ? "" :
+      (recipeOf(cur) ? '<span class="dot"></span>' : "") +
+      (cur.s === "liked" ? '<span class="tick"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>' : "");
+    $("yum").classList.toggle("on", !!(cur && cur.s === "liked"));
+    renderWeek();
+    $("nope").disabled = $("yum").disabled = !cur;
+    const out = state.items.filter(i => i.s === "vetoed");
+    const yes = state.items.filter(i => i.s === "liked");
+    $("cntYes").textContent = yes.length || ""; $("cntNo").textContent = out.length || "";
+    $("badge").hidden = !(out.length + yes.length); $("badge").textContent = out.length + yes.length;
+    const EMPTY = "";
+    $("nopeList").innerHTML = out.length ? out.map(i => `<li><button data-id="${i.id}">${esc(i.name)}${X}</button></li>`).join("") : EMPTY;
+    $("yesList").innerHTML = yes.length ? yes.map(i => `<li class="split"><button data-id="${i.id}">${esc(i.name)}</button><button class="rm" data-rm="${i.id}" aria-label="Remove">${BIN}</button></li>`).join("") : EMPTY;
+  }
+
+  // Sheets
+  const open = id => { $(id).hidden = false; };
+  let recipeFromWeek = false;
+  function closeModal(m) {
+    m.hidden = true;
+    if (m.id === "recipe" && recipeFromWeek) { recipeFromWeek = false; renderWeek(); $("days").classList.remove("stagger"); $("week").hidden = false; $("week").classList.add("back"); setTimeout(() => $("week").classList.remove("back"), 300); }
+  }
+  const closeAll = () => document.querySelectorAll(".modal").forEach(m => { if (!m.hidden) closeModal(m); });
+  document.querySelectorAll(".modal").forEach(m => m.addEventListener("click", e => {
+    if (e.target === m || e.target.closest("[data-close]")) closeModal(m);
+  }));
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeAll(); });
+
+  function showRecipe(it) {
+    const rec = it && recipeOf(it); if (!rec) return;
+    $("rTitle").textContent = it.name;
+    $("rView").innerHTML = `<h3 class="caps">Ingredients</h3><ul class="chips">${rec.i.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` +
+      (rec.m.length ? `<h3 class="caps">Method</h3><ol>${rec.m.map(x => `<li>${esc(x)}</li>`).join("")}</ol>` : "");
+    $("rDone").innerHTML = recipeFromWeek ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 6l-6 6 6 6"/></svg>' : "Done";
+    open("recipe");
+  }
+  $("pick").onclick = () => { if (!spinning) showRecipe(current()); };
+  $("openLists").onclick = () => open("lists");
+
+  // ---- Week plan ----
+  const byId = id => state.items.find(i => i.id === id);
+  const dinnerPool = () => state.items.filter(i => i.s !== "vetoed" && KIND[i.name.toLowerCase()] === "d" && RECIPES[i.name]);
+  function pickDinner(exclude) {
+    const p = dinnerPool().filter(i => !exclude.includes(i.id));
+    if (!p.length && !dinnerPool().length) return null;
+    const c = weighted(p.length ? p : dinnerPool()); remember(c.id); return c.id;
+  }
+  const blankWeek = () => { state.plan = { start: new Date().toDateString(), ids: Array(7).fill(null) }; state.shop = {}; };
+  function planWeek() {   // fill every day
+    blankWeek();
+    const ids = state.plan.ids;
+    for (let d = 0; d < 7; d++) ids[d] = pickDinner(ids.filter(Boolean));
+  }
+  function fillEmpty() {  // fill only the blank days (or re-roll all if none are blank)
+    const ids = state.plan.ids;
+    if (!ids.includes(null)) return planWeek();
+    ids.forEach((id, d) => { if (id == null) ids[d] = pickDinner(ids.filter(Boolean)); });
+  }
+  let shopping = false, openDay = null;
+  const PLUS = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
+  const RE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 13.7-5.6L20 8.5M20 4v4.5h-4.5M20 12a8 8 0 0 1-13.7 5.6L4 15.5M4 20v-4.5h4.5"/></svg>';
+  function renderWeek() {
+    if (!state.plan) return;
+    const start = new Date(state.plan.start);
+    $("days").innerHTML = state.plan.ids.map((id, d) => {
+      const it = id != null && byId(id);
+      const day = new Date(start.getTime() + d * 864e5).toLocaleDateString("en-GB", { weekday: "short" });
+      if (!it) return `<li class="blank" style="--i:${d}"><span class="d caps">${day}</span><button class="n" data-re="${d}" aria-label="Fill"></button><button class="re add" data-re="${d}" aria-label="Fill">${PLUS}</button></li>`;
+      const rec = openDay === d && recipeOf(it);
+      const detail = rec ? `<li class="detail"><div><ul class="chips">${rec.i.map(x => `<li>${esc(x)}</li>`).join("")}</ul>${rec.m.length ? `<ol>${rec.m.map(x => `<li>${esc(x)}</li>`).join("")}</ol>` : ""}</div></li>` : "";
+      return `<li style="--i:${d}" class="${openDay === d ? "open" : ""}"><span class="d caps">${day}</span><button class="n" data-show="${id}">${recipeOf(it) ? '<span class="dot"></span>' : ""}${esc(it.name)}</button><button class="re" data-re="${d}" aria-label="Swap">${RE}</button></li>` + detail;
+    }).join("");
+  }
+  $("openWeek").onclick = () => { if (!state.plan) blankWeek(); openWeekAnimated(); };
+  $("replan").onclick = () => { fillEmpty(); save(); openWeekAnimated(); };
+  $("clearWeek").onclick = () => {
+    const prev = JSON.stringify(state.plan), prevShop = state.shop;
+    blankWeek(); shopping = false; save(); openWeekAnimated();
+    toast("Cleared", () => { state.plan = JSON.parse(prev); state.shop = prevShop; renderWeek(); save(); });
+  };
+  $("days").onclick = e => {
+    const re = e.target.closest("[data-re]"), sh = e.target.closest("[data-show]");
+    if (re) {
+      const d = +re.dataset.re; const others = state.plan.ids.filter((x, k) => k !== d && x != null);
+      state.plan.ids[d] = pickDinner(others);
+      $("days").classList.remove("stagger");
+      renderWeek(); save();
+      const row = $("days").querySelectorAll(":scope > li:not(.detail)")[d];
+      row.classList.add("swap");
+    }
+    else if (sh) {
+      const d = [...$("days").querySelectorAll(":scope > li:not(.detail)")].indexOf(sh.closest("li"));
+      if (!recipeOf(byId(+sh.dataset.show))) return;
+      openDay = openDay === d ? null : d;
+      $("days").classList.remove("stagger"); renderWeek();
+    }
+  };
+
+  // Long-press Spin = plan the week (fill → dot flies to calendar → week slides in)
+  // Hold-to-plan: the panel becomes a slot-machine week, each day settles in turn, then it hands off to the calendar.
+  function reelWeek(done) {
+    const ids = state.plan.ids, start = new Date(state.plan.start), names = dinnerPool().map(i => i.name);
+    const finish = () => { const c = $("openWeek"); c.classList.remove("bump"); void c.offsetWidth; c.classList.add("bump"); done(); };
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches || !names.length) return finish();
+    spinning = true;
+    const panel = document.querySelector(".panel");
+    const reel = document.createElement("ul"); reel.className = "reel";
+    reel.innerHTML = ids.map((id, d) => `<li style="--i:${d}"><span class="caps">${new Date(start.getTime() + d * 864e5).toLocaleDateString("en-GB", { weekday: "short" })}</span><b></b></li>`).join("");
+    panel.classList.add("reeling"); panel.appendChild(reel);
+    const rows = [...reel.children], settled = new Set();
+    const tick = setInterval(() => rows.forEach((li, d) => { if (!settled.has(d)) li.lastChild.textContent = rnd(names); }), 60);
+    ids.forEach((id, d) => setTimeout(() => {
+      settled.add(d); rows[d].lastChild.textContent = byId(id).name; rows[d].classList.add("set");
+    }, 380 + d * 150));
+    setTimeout(() => {
+      clearInterval(tick);
+      reel.classList.add("away");
+      setTimeout(() => { reel.remove(); panel.classList.remove("reeling"); spinning = false; finish(); }, 320);
+    }, 380 + 6 * 150 + 650);
+  }
+  function openWeekAnimated() {
+    openDay = null;
+    shopping = false; renderWeek();
+    $("days").classList.remove("stagger"); void $("days").offsetWidth; $("days").classList.add("stagger");
+    open("week");
+  }
+  let lp = null, lpFired = false;
+  $("spin").addEventListener("pointerdown", () => {
+    lpFired = false; $("spin").classList.add("holding");
+    lp = setTimeout(() => {
+      lpFired = true; $("spin").classList.remove("holding");
+      planWeek(); save(); const c = $("openWeek"); c.classList.remove("bump"); void c.offsetWidth; c.classList.add("bump"); openWeekAnimated();
+    }, 670);
+  });
+  ["pointerup", "pointerleave", "pointercancel"].forEach(ev => $("spin").addEventListener(ev, () => { clearTimeout(lp); $("spin").classList.remove("holding"); }));
+  $("spin").addEventListener("contextmenu", e => e.preventDefault());
+  $("yesList").onclick = e => {
+    const rm = e.target.closest("button[data-rm]");
+    if (rm) {
+      const it = state.items.find(i => i.id === +rm.dataset.rm);
+      it.s = "new"; render(); save();
+      return toast("Removed", () => { it.s = "liked"; render(); save(); });
+    }
+    const b = e.target.closest("button[data-id]"); if (!b) return;
+    state.last = +b.dataset.id;
+    closeAll(); render(); land(); save();
+  };
+  $("nopeList").onclick = e => {
+    const b = e.target.closest("button[data-id]"); if (!b) return;
+    const it = state.items.find(i => i.id === +b.dataset.id);
+    it.s = "new";
+    render(); save();
+    toast("Removed", () => { it.s = "vetoed"; render(); save(); });
+  };
+
+  $("spin").onclick = () => { if (lpFired) { lpFired = false; return; } spin(); };
+  $("nope").onclick = () => rate("vetoed");
+  $("yum").onclick = () => rate("liked");
+  $("toastUndo").onclick = () => { const f = undoFn; undoFn = null; $("toast").classList.remove("show"); if (f) f(); };
+
+  render();
+  try {
+    const ui = JSON.parse(sessionStorage.getItem(UI) || "null");
+    sessionStorage.removeItem(UI);
+    if (ui && Date.now() - ui.at < 30000 && ui.open && ui.open !== "recipe") {
+      document.documentElement.classList.add("still");
+      if (ui.open === "week") { shopping = !!ui.shopping; renderWeek(); }
+      $(ui.open).hidden = false;
+      setTimeout(() => document.documentElement.classList.remove("still"), 400);
+    }
+  } catch (e) {}
+  if (window.claude && claude.use) claude.use("artifact").then(a => { artifact = a; }).catch(() => {});
+})();
+</script>
+</body>
+</html>
